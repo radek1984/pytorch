@@ -11,8 +11,13 @@ struct CPUEventWrapper {
     CAFFE_ENFORCE(
         option.device_type() == PROTO_CPU ||
             option.device_type() == PROTO_MKLDNN ||
-            option.device_type() == PROTO_IDEEP,
-        "Expected CPU/MKLDNN/IDEEP device type");
+            option.device_type() == PROTO_IDEEP ||
+            option.device_type() == PROTO_OPENCL,
+        "Expected CPU/MKLDNN/IDEEP/OPENCL device type");
+        //TODO: Investigate if this is valid solution for OpenCL.
+        //      Event handlers for CPU were reused for OpenCL
+        //      so event should accept OpenCL event type
+        //      for test to pass successfully.
   }
   ~CPUEventWrapper() {}
 
