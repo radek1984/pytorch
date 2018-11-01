@@ -243,10 +243,14 @@ class StmtBuilder(Builder):
     @staticmethod
     def get_assign_lhs_expr(ctx, expr):
         var = build_expr(ctx, expr)
-        if not isinstance(var, Var) and not isinstance(var, Starred):
-            raise NotSupportedError(var.range(),
-                                    "the only expressions allowed on the left hand side of "
-                                    "assignments are variable names and starred expressions")
+        if not isinstance(var, Var) and not isinstance(
+                var, Starred) and not isinstance(var, Subscript):
+            print(var)
+            raise NotSupportedError(
+                var.range(),
+                "the only expressions allowed on the left hand side of "
+                "assignments are variable names, starred expressions, "
+                "and subscripts")
         return var
 
     @staticmethod

@@ -54,13 +54,6 @@ void checkImplicitTensorToNum(at::Tensor t, bool toInt) {
 
 RegisterOperators reg({
     Operator(
-        prim::MemoryFence,
-        [](const Node* node) {
-          return [](Stack& stack) {
-            return 0;
-          };
-        }),
-    Operator(
         prim::FusionGroup,
         [](const Node* node) {
           const auto key = registerFusion(node);
@@ -749,6 +742,27 @@ Operation listSlice(const Node* node) {
   };
 }
 
+template <typename TList, typename TElement>
+Operation listSetItem(const Node* node) {
+  return [](Stack& stack) {
+    TList list;
+    int64_t idx;
+    TElement value;
+
+    pop(stack, list, idx, value);
+    const int64_t list_size = list->elements().size();
+    const int64_t normalized_idx = normalizeIndex(idx, list_size);
+    if (normalized_idx < 0 || normalized_idx >= list_size) {
+      throw std::out_of_range("list index out of range");
+    }
+
+    list->elements()[normalized_idx] = value;
+
+    push(stack, list);
+    return 0;
+  };
+}
+
 RegisterOperators reg2({
 
 #define DEFINE_STRING_OP(op_name, string_op, result)                           \
@@ -782,6 +796,7 @@ Operator(                                                                      \
     ),
 #define CREATE_LIST_OPS(decl_type, c_type) \
     Operator("aten::select(" decl_type "[] a, int b) -> " decl_type, listSelect<Shared<c_type>>), \
+    Operator("aten::_set_item(" decl_type "[](a!) l, int idx, " decl_type " el) -> " decl_type"[](a!)", listSetItem<Shared<c_type>, c_type::ElemType>), \
     Operator("aten::len(" decl_type "[] a) -> int", listLen<Shared<c_type>>), \
     Operator("aten::add(" decl_type "[] a, " decl_type "[] b) -> " decl_type "[]", listAdd<Shared<c_type>, c_type::ElemType>), \
     Operator( \
@@ -802,6 +817,26 @@ Operator(                                                                      \
     Operator("aten::eq(int[] a, int[] b) -> int", listEq<Shared<IntList>>),
     Operator("aten::eq(float[] a, float[] b) -> int", listEq<Shared<DoubleList>>),
     Operator("aten::eq(Tensor[] a, Tensor[] b) -> int", listEq<Shared<TensorList>>),
+
+#define CREATE_ASSIGN_OP(other_type, c_type)                              \
+  Operator(                                                               \
+      "aten::_assign(Tensor(a!) t, " #other_type " other) -> Tensor(a!)", \
+      [](const Node* node) {                                              \
+        return [=](Stack& stack) {                                        \
+          at::Tensor t;                                                   \
+          c_type other;                                                   \
+          pop(stack, t, other);                                           \
+          std::move(t) = other;                                           \
+          push(stack, std::move(t));                                      \
+          return 0;                                                       \
+        };                                                                \
+      }),
+
+    CREATE_ASSIGN_OP(Tensor, at::Tensor)
+    CREATE_ASSIGN_OP(int, int64_t)
+    CREATE_ASSIGN_OP(float, double)
+#undef CREATE_ASSIGN_OP
+
 
     DEFINE_BINARY_OP(aten::add, a + b)
     DEFINE_BINARY_OP(aten::sub, a - b)

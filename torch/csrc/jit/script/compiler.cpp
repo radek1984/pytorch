@@ -1351,13 +1351,13 @@ private:
     size_t num_normal_assign = 0;
     size_t num_starred = 0;
     for (const auto& assignee : lhs) {
-      if (assignee.kind() == TK_VAR) {
+      if (assignee.kind() == TK_VAR || assignee.kind() == TK_SUBSCRIPT) {
         num_normal_assign++;
       } else if (assignee.kind() == TK_STARRED) {
         num_starred++;
       } else {
-        throw ErrorReport(assignee)
-            << "lhs of assignment must be a variable or starred expression.";
+        throw ErrorReport(assignee) << "lhs of assignment must be a variable, "
+                                    << "subscript, or starred expression.";
       }
     }
 
@@ -1377,9 +1377,7 @@ private:
 
   // Emit nodes for augmented assignments like `+=`
   void emitAugAssignment(const AugAssign& stmt) {
-    auto lhs = Var(stmt.lhs());
-    auto lhsValue = environment_stack->getSugaredVar(lhs.name())
-                        ->asValue(lhs.range(), method);
+    auto lhsValue = emitExpr(stmt.lhs());
     if (lhsValue->type()->isSubtypeOf(DynamicType::get())) {
       // for tensors, emit the corresponding in-place op
       Symbol op;
@@ -1402,8 +1400,8 @@ private:
       }
 
       auto rhs = NamedValue(stmt.rhs().range(), emitExpr(stmt.rhs()));
-      auto self = NamedValue(lhs.range(), lhs.name().name(), lhsValue);
-      auto output = emitBuiltinCall(
+      auto self = NamedValue(stmt.lhs().range(), "self", lhsValue);
+      emitBuiltinCall(
           stmt.range(),
           *method.graph(),
           op,
@@ -1411,7 +1409,6 @@ private:
           {rhs},
           {},
           /*required=*/true);
-      environment_stack->setVar(lhs.range(), lhs.name().name(), output);
     } else {
       // for primitive types, desugar into a simple assignment
       //   e.g. foo += 1 becomes foo.2 = foo + 1
@@ -1419,6 +1416,63 @@ private:
       Expr expr = BinOp::create(stmt.range(), stmt.aug_op(),
                                 Var::create(lhs.range(), lhs), stmt.rhs());
       environment_stack->setVar(lhs.range(), lhs.name(), emitExpr(expr));
+    }
+  }
+
+  // Emit mutating assignments like `foo[0] = bar`
+  void emitSetItemAssignment(
+      const SourceRange& stmtRange,
+      const Subscript& lhs,
+      const Expr& rhs) {
+    emitSetItemAssignment(stmtRange, lhs, rhs.range(), emitExpr(rhs));
+  }
+
+  void emitSetItemAssignment(
+      const SourceRange& stmtRange,
+      const Subscript& lhs,
+      const SourceRange& rhsRange,
+      Value* rhs) {
+    // First check the subscripted value.
+    auto lhsBaseValue = emitExpr(lhs.value());
+
+    // If it's a tensor, we can just assign directly to the lvalue
+    if (lhsBaseValue->type()->isSubtypeOf(DynamicType::get())) {
+      std::vector<NamedValue> args;
+      args.emplace_back(lhs.range(), "t", emitExpr(lhs));
+      args.emplace_back(rhsRange, "other", rhs);
+      emitBuiltinCall(
+          stmtRange,
+          *method.graph(),
+          aten::_assign,
+          c10::nullopt,
+          args,
+          {},
+          true);
+
+    // Otherwise, this is a list. Dispatch to aten::_set_item to both select and
+    // assign
+    } else {
+      const auto subscript = lhs.subscript_exprs();
+      if (subscript.size() != 1 || subscript[0].kind() == TK_SLICE_EXPR) {
+        throw ErrorReport(subscript)
+            << "Sliced expression not yet supported for"
+            << " subscripted list assignment. "
+            << "File a bug if you want this.";
+      }
+
+      std::vector<NamedValue> args;
+      args.emplace_back(lhs.value().range(), "list", emitExpr(lhs.value()));
+      args.emplace_back(
+          lhs.subscript_exprs().range(), "idx", emitExpr(subscript[0]));
+      args.emplace_back(rhsRange, "rhs", rhs);
+      emitBuiltinCall(
+          stmtRange,
+          *method.graph(),
+          aten::_set_item,
+          c10::nullopt,
+          args,
+          {},
+          true);
     }
   }
 
@@ -1433,8 +1487,16 @@ private:
 
     if(stmt.lhs().size() == 1) {
       JIT_ASSERT(!starred_unpack);
-      auto v = Var(stmt.lhs()[0]);
-      environment_stack->setSugaredVar(v.range(), v.name().name(), output);
+      auto lhs = stmt.lhs()[0];
+      if (lhs.kind() == TK_SUBSCRIPT) {
+        emitSetItemAssignment(
+            stmt.range(),
+            Subscript(lhs),
+            stmt.rhs());
+      } else {
+        auto v = Var(lhs);
+        environment_stack->setSugaredVar(v.range(), v.name().name(), output);
+      }
       return;
     }
 
@@ -1455,7 +1517,14 @@ private:
     }
     int i = 0;
     for (auto assignee : stmt.lhs()) {
-      if (assignee.kind() == TK_VAR) {
+      if (assignee.kind() == TK_SUBSCRIPT) {
+        emitSetItemAssignment(
+            stmt.range(),
+            Subscript(assignee),
+            stmt.rhs().range(),
+            outputs.at(i)->asValue(stmt.rhs().range(), method));
+        i++;
+      } else if (assignee.kind() == TK_VAR) {
         environment_stack->setSugaredVar(assignee.range(), Var(assignee).name().name(), outputs.at(i));
         i++;
       } else if (assignee.kind() == TK_STARRED) {
