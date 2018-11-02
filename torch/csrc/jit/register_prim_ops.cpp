@@ -600,6 +600,17 @@ int64_t normalizeIndex(int64_t idx, int64_t list_size) {
   return idx;
 }
 
+// Equivalent to list.at(idx)
+template <typename TList> // something like Shared<IntList>
+typename TList::element_type::ElemType& getItem(TList& list, int64_t idx) {
+  const int64_t list_size = list->elements().size();
+  const int64_t normalized_idx = normalizeIndex(idx, list_size);
+  if (normalized_idx < 0 || normalized_idx >= list_size) {
+    throw std::out_of_range("list index out of range");
+  }
+  return list->elements()[normalized_idx];
+}
+
 template <typename TList, typename TElement>
 Operation listAppend(const Node* node) {
   return [](Stack& stack) {
@@ -620,13 +631,8 @@ Operation listSelect(const Node* node) {
     T list;
     int64_t idx;
     pop(stack, list, idx);
-    const int64_t list_size = list->elements().size();
-    const int64_t normalized_idx = normalizeIndex(idx, list_size);
-    if (normalized_idx < 0 || normalized_idx >= list_size) {
-      throw std::out_of_range("list index out of range");
-    }
 
-    auto element = list->elements()[normalized_idx];
+    auto element = getItem(list, idx);
     push(stack, std::move(element));
     return 0;
   };
@@ -750,13 +756,7 @@ Operation listSetItem(const Node* node) {
     TElement value;
 
     pop(stack, list, idx, value);
-    const int64_t list_size = list->elements().size();
-    const int64_t normalized_idx = normalizeIndex(idx, list_size);
-    if (normalized_idx < 0 || normalized_idx >= list_size) {
-      throw std::out_of_range("list index out of range");
-    }
-
-    list->elements()[normalized_idx] = value;
+    getItem(list, idx) = value;
 
     push(stack, list);
     return 0;
@@ -837,6 +837,34 @@ Operator(                                                                      \
     CREATE_ASSIGN_OP(float, double)
 #undef CREATE_ASSIGN_OP
 
+// Create ops to do augmented assignments to primitive list types, e.g.:
+//   foo[a] += 1 where foo :: int[]
+#define CREATE_AUG_SETITEM_OP(c_type, decl_type, aug_name, aug_op)            \
+  Operator(                                                                \
+      "aten::_aug_item_" aug_name "(" decl_type                            \
+      "[](a!) list, int idx, " decl_type " value) -> " decl_type "[](a!)", \
+      [](const Node* node) {                                               \
+        return [](Stack& stack) {                                          \
+          Shared<c_type> list;                                             \
+          int64_t idx;                                                     \
+          c_type::ElemType value;                                          \
+          pop(stack, list, idx, value);                                    \
+          getItem(list, idx) aug_op value;                                 \
+          push(stack, list);                                               \
+          return 0;                                                        \
+        };                                                                 \
+      }),
+#define CREATE_AUG_SETITEM_OPS(c_type, decl_type)     \
+  CREATE_AUG_SETITEM_OP(c_type, decl_type, "add", +=) \
+  CREATE_AUG_SETITEM_OP(c_type, decl_type, "sub", -=) \
+  CREATE_AUG_SETITEM_OP(c_type, decl_type, "div", /=) \
+  CREATE_AUG_SETITEM_OP(c_type, decl_type, "mul", *=)
+
+    CREATE_AUG_SETITEM_OPS(IntList, "int")
+    CREATE_AUG_SETITEM_OPS(DoubleList, "float")
+
+#undef CREATE_AUG_SETITEM_OPS
+#undef CREATE_AUG_SETITEM_OP
 
     DEFINE_BINARY_OP(aten::add, a + b)
     DEFINE_BINARY_OP(aten::sub, a - b)

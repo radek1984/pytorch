@@ -1375,38 +1375,82 @@ private:
     return num_starred;
   }
 
-  // Emit nodes for augmented assignments like `+=`
-  void emitAugAssignment(const AugAssign& stmt) {
-    auto lhsValue = emitExpr(stmt.lhs());
-    if (lhsValue->type()->isSubtypeOf(DynamicType::get())) {
-      // for tensors, emit the corresponding in-place op
-      Symbol op;
+  // Get the appropriate builtin op for this augmented assignment
+  // If the RHS is a tensor, return the corresponding ATen in-place op
+  // If it's a list of scalars, then return the corresponding list augment op
+  Symbol getAugOp(const AugAssign& stmt, bool isTensor) {
       switch (stmt.aug_op()) {
         case '+':
-          op = aten::add_;
-          break;
+          return isTensor ? aten::add_ : aten::_aug_item_add;
         case '-':
-          op = aten::sub_;
-          break;
+          return isTensor ? aten::sub_ : aten::_aug_item_sub;
         case '/':
-          op = aten::div_;
-          break;
+          return isTensor ? aten::div_ : aten::_aug_item_div;
         case '*':
-          op = aten::mul_;
-          break;
+          return isTensor ? aten::mul_ : aten::_aug_item_mul;
         default:
-          throw ErrorReport(stmt) << "Unknown augmented assignment to Tensor: "
+          throw ErrorReport(stmt) << "Unknown augmented assignment: "
                                   << kindToString(stmt.aug_op());
       }
+  }
 
-      auto rhs = NamedValue(stmt.rhs().range(), emitExpr(stmt.rhs()));
-      auto self = NamedValue(stmt.lhs().range(), "self", lhsValue);
+  // Emit nodes for augmented assignments like `+=`
+  void emitAugAssignment(const AugAssign& stmt) {
+    const auto lhsValue = emitExpr(stmt.lhs());
+    if (lhsValue->type()->isSubtypeOf(DynamicType::get())) {
+      // for tensors, emit the corresponding in-place op
+
+      const auto rhs = NamedValue(stmt.rhs().range(), emitExpr(stmt.rhs()));
+      const auto self = NamedValue(stmt.lhs().range(), "self", lhsValue);
+      const auto output = emitBuiltinCall(
+          stmt.range(),
+          *method.graph(),
+          getAugOp(stmt, /*isTensor=*/true),
+          self,
+          {rhs},
+          {},
+          /*required=*/true);
+
+      if (stmt.lhs().kind() == TK_VAR) {
+        // if the lhs was a simple tensor variable, bind a new version of that
+        // variable to the op output.
+        const auto lhs = Var(stmt.lhs()).name();
+        environment_stack->setVar(lhs.range(), lhs.name(), output);
+      }
+    } else if (stmt.lhs().kind() == TK_SUBSCRIPT) {
+      // If it's a subscript expr that doesn't ultimately evaluate to tensor,
+      // it's a list of primitive types.
+
+      // Process the base list value
+      const auto lhs = Subscript(stmt.lhs());
+      const auto listExpr = lhs.value();
+      const auto listValue = emitExpr(listExpr);
+      const auto listType = listValue->type()->cast<ListType>();
+      JIT_ASSERT(listType != nullptr);
+      JIT_ASSERT(
+          listType->getElementType() == IntType::get() ||
+          listType->getElementType() == FloatType::get());
+
+      // Get the idx to augment
+      const auto subscriptExprs = lhs.subscript_exprs();
+      if (subscriptExprs.size() != 1) {
+        throw ErrorReport(subscriptExprs)
+            << "Sliced expression not yet supported for"
+            << " subscripted list augmented assignment. "
+            << "File a bug if you want this.";
+      }
+      const auto idxValue = emitExpr(subscriptExprs[0]);
+
+      std::vector<NamedValue> args;
+      args.emplace_back(listExpr.range(), "list", listValue);
+      args.emplace_back(subscriptExprs.range(), "idx", idxValue);
+      args.emplace_back(stmt.rhs().range(), "value", emitExpr(stmt.rhs()));
       emitBuiltinCall(
           stmt.range(),
           *method.graph(),
-          op,
-          self,
-          {rhs},
+          getAugOp(stmt, /*isTensor=*/false),
+          c10::nullopt,
+          args,
           {},
           /*required=*/true);
     } else {
@@ -1424,14 +1468,14 @@ private:
       const SourceRange& stmtRange,
       const Subscript& lhs,
       const Expr& rhs) {
-    emitSetItemAssignment(stmtRange, lhs, rhs.range(), emitExpr(rhs));
+    emitSetItemAssignment(
+        stmtRange, lhs, NamedValue(rhs.range(), emitExpr(rhs)));
   }
 
   void emitSetItemAssignment(
       const SourceRange& stmtRange,
       const Subscript& lhs,
-      const SourceRange& rhsRange,
-      Value* rhs) {
+      const NamedValue& rhs) {
     // First check the subscripted value.
     auto lhsBaseValue = emitExpr(lhs.value());
 
@@ -1439,7 +1483,7 @@ private:
     if (lhsBaseValue->type()->isSubtypeOf(DynamicType::get())) {
       std::vector<NamedValue> args;
       args.emplace_back(lhs.range(), "t", emitExpr(lhs));
-      args.emplace_back(rhsRange, "other", rhs);
+      args.emplace_back(rhs.loc(), "other", rhs.value(*graph));
       emitBuiltinCall(
           stmtRange,
           *method.graph(),
@@ -1464,7 +1508,7 @@ private:
       args.emplace_back(lhs.value().range(), "list", emitExpr(lhs.value()));
       args.emplace_back(
           lhs.subscript_exprs().range(), "idx", emitExpr(subscript[0]));
-      args.emplace_back(rhsRange, "rhs", rhs);
+      args.push_back(rhs);
       emitBuiltinCall(
           stmtRange,
           *method.graph(),
@@ -1521,8 +1565,9 @@ private:
         emitSetItemAssignment(
             stmt.range(),
             Subscript(assignee),
-            stmt.rhs().range(),
-            outputs.at(i)->asValue(stmt.rhs().range(), method));
+            NamedValue(
+                stmt.rhs().range(),
+                outputs.at(i)->asValue(stmt.rhs().range(), method)));
         i++;
       } else if (assignee.kind() == TK_VAR) {
         environment_stack->setSugaredVar(assignee.range(), Var(assignee).name().name(), outputs.at(i));

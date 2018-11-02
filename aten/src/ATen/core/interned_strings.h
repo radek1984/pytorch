@@ -76,6 +76,10 @@ namespace c10 {
   _(aten, __isnot__)               \
   _(aten, _assign)                 \
   _(aten, _set_item)               \
+  _(aten, _aug_item_add)           \
+  _(aten, _aug_item_sub)           \
+  _(aten, _aug_item_div)           \
+  _(aten, _aug_item_mul)           \
   FORALL_ATEN_BASE_SYMBOLS(_)      \
   _(onnx, Add)                     \
   _(onnx, Concat)                  \
