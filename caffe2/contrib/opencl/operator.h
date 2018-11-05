@@ -7,7 +7,7 @@
 
 namespace caffe2 {
 
-CAFFE_DECLARE_REGISTRY(
+C10_DEFINE_REGISTRY(
     OpenCLOperatorRegistry,
     OperatorBase,
     const OperatorDef&,

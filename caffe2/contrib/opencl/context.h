@@ -34,9 +34,12 @@
     }\
   } while(0)
 
+#define CAFFE2_OPENCL_EXPORT __attribute__((__visibility__("default")))
+#define CAFFE2_OPENCL_API CAFFE2_OPENCL_EXPORT
+
 namespace caffe2 {
 
-struct ThreadLocalOpenCLObjects {
+CAFFE2_OPENCL_API struct ThreadLocalOpenCLObjects {
  private:
   ThreadLocalOpenCLObjects();
   ThreadLocalOpenCLObjects(const ThreadLocalOpenCLObjects &) = delete;
@@ -55,15 +58,18 @@ struct ThreadLocalOpenCLObjects {
   friend class OpenCLContext;
 };
 
-class OpenCLContext final {
+CAFFE2_OPENCL_API class OpenCLContext final : public BaseContext {
  public:
+  //TODO: Move members to private section used friends for access
   static cl::Context context;
   static cl::Platform platform;
-  static cl::Device device;
+  static cl::Device computing_device;
   static std::vector<cl::Device> devices;
   static bool initialized;
 
   explicit OpenCLContext() {}
+  explicit OpenCLContext(const at::Device& device)
+      : OpenCLContext(DeviceToOption(device)) {}
   explicit OpenCLContext(const DeviceOption& option) {
     // TODO: Investigate why this assert was introduced
     //
@@ -73,7 +79,8 @@ class OpenCLContext final {
     // It seams that copy operator can contain
     // OpenCLContext but transfer data from/to CPU context.
     //
-    // DCHECK_EQ(option.device_type(), OPENCL);
+    // DCHECK_EQ(option.device_type(), PROTO_OPENCL);
+    // invalid cast to abstract type
     OpenCLContext();
 
     if (!OpenCLContext::initialized) {
@@ -93,14 +100,16 @@ class OpenCLContext final {
       if (devices.size() == 0 || device_id >= devices.size()) {
         CAFFE_THROW("Cannot find OpenCL compatible device.");
       }
-      device = devices[device_id];
+      computing_device = devices[device_id];
       cl_int err;
-      context = cl::Context({device}, nullptr, nullptr , nullptr, &err);
+      context = cl::Context({computing_device}, nullptr, nullptr , nullptr, &err);
       OPENCL_CHECK(err);
       OpenCLContext::initialized = true;
     }
   }
-  ~OpenCLContext() {}
+  ~OpenCLContext() override {
+    FinishDeviceComputation();
+  }
 
   /*
    * Everything below is basically boiler plate for Context classes
@@ -111,10 +120,35 @@ class OpenCLContext final {
 
   void LogProfilingInfo(const cl::Event& ev, const std::string& str);
 
+  void CopyBytesSameDevice(size_t nbytes, const void* src, void* dst) override {
+    CopyBytes<OpenCLContext, OpenCLContext>(nbytes, src, dst);
+  }
+
+  void CopyBytesToCPU(size_t nbytes, const void* src, void* dst) override {
+    CopyBytes<OpenCLContext, CPUContext>(nbytes, src, dst);
+  }
+
+  void CopyBytesFromCPU(size_t nbytes, const void* src, void* dst) override {
+    CopyBytes<CPUContext, OpenCLContext>(nbytes, src, dst);
+  }
+
   template <typename T, class SrcContext, class DstContext>
   inline void Copy(int n, const T* src, T* dst) {
     CopyBytes<SrcContext, DstContext>(
         n * sizeof(T), static_cast<const void*>(src), static_cast<void*>(dst));
+  }
+
+  at::Device device() const override {
+    // Similar implementation exist for CUDA
+    // return at::Device(OPENCL, gpu_id_);
+    //TODO: Implement.
+    assert(false && "NOT IMPLEMENTED");
+  }
+  at::DeviceType device_type() const override {
+    // Similar implementation exist for CUDA
+    // return OPENCL;
+    // TODO: Implement.
+    assert(false && "NOT IMPLEMENTED");
   }
 
   inline void CopyCL(const cl::Buffer* src, cl::Buffer* dst, size_t size_bytes) {
@@ -133,24 +167,20 @@ class OpenCLContext final {
     CopyBytes<SrcContext, DstContext>(n * meta.itemsize(), src, dst);
   }
 
-  void SwitchToDevice(int queue_id, ...) {
+  void SwitchToDevice(int queue_id) override {
     queue_id_ = queue_id;
   }
 
-  void SwitchToDevice() {
-    SwitchToDevice(0);
+  inline void WaitEvent(const Event& ev) override {
+    ev.Wait(at::OpenCLFloat, this);
   }
 
-  inline void WaitEvent(const Event& ev) {
-    ev.Wait(OPENCL, this);
-  }
-
-  inline void Record(Event* ev, const char* err_msg = nullptr) const {
+  inline void Record(Event* ev, const char* err_msg = nullptr) const override {
     CAFFE_ENFORCE(ev, "Event must not be null.");
-    ev->Record(OPENCL, this, err_msg);
+    ev->Record(PROTO_OPENCL, this, err_msg);
   }
 
-  bool FinishDeviceComputation() {
+  void FinishDeviceComputation() override {
     queue().finish();
     openCL_objects_.PrintProfilingLogs();
     return true;
@@ -204,29 +234,21 @@ class OpenCLContext final {
   //  }
   //}
 
-  template <typename T_in, typename T_out, class SrcContext, class DstContext>
-  inline void Copy(const Tensor<SrcContext>& src, Tensor<DstContext>& dst) {
-    dst.Resize(src.dims());
-    size_t n = src.size();
-    if (std::is_same<T_in, T_out>::value) {
-      if (std::is_fundamental<T_in>::value) {
-        CopyBytes<SrcContext, DstContext>(n * sizeof(T_in),
-                                       static_cast<const void*>(src.template data<T_in>()),
-                                       static_cast<void*>(dst.template mutable_data<T_out>()));
-      } else {
-        for (int i = 0; i < n; ++i) {
-          dst.template mutable_data<T_out>()[i] = src.template data<T_in>()[i];
-        }
-      }
-    } else {
-      CAFFE_THROW("This Copy requires specialization.");
-    }
-  }
+  //Definition not necessary for 20181026 version
+  //template <typename T, class SrcContext, class DstContext>
+  //inline void Copy(int n, const T* src, T* dst) {
+  //  //dst->Resize(src.dims());
+  //  //size_t n = src->size();
+  //  CopyBytes<SrcContext, DstContext>(n * sizeof(T),
+  //                               static_cast<const void*>(src),
+  //                               static_cast<void*>(dst));
+  //}
 
-  template <typename T, class SrcContext, class DstContext>
-  inline void Copy(const Tensor<SrcContext>& src, Tensor<DstContext>& dst) {
-    Copy<T, T>(src, dst);
-  }
+  //Not used enymore
+  //template <typename T, class SrcContext, class DstContext>
+  //inline void Copy(const Tensor<SrcContext>& src, Tensor<DstContext>& dst) {
+  //  Copy<T, T>(src, dst);
+  //}
 
   // By default CUDA operators have async device parts
   static bool HasAsyncPartDefault() {

@@ -126,6 +126,9 @@ REGISTER_CPU_CPP = CodeTemplate.from_file(TEMPLATE_PATH + "/RegisterCPU.cpp")
 REGISTER_CUDA_H = CodeTemplate.from_file(TEMPLATE_PATH + "/RegisterCUDA.h")
 REGISTER_CUDA_CPP = CodeTemplate.from_file(TEMPLATE_PATH + "/RegisterCUDA.cpp")
 
+REGISTER_OPENCL_H = CodeTemplate.from_file(TEMPLATE_PATH + "/RegisterOPENCL.h")
+REGISTER_OPENCL_CPP = CodeTemplate.from_file(TEMPLATE_PATH + "/RegisterOPENCL.cpp")
+
 TENSOR_H = CodeTemplate.from_file(TEMPLATE_PATH + "/Tensor.h")
 TENSOR_METHODS_H = CodeTemplate.from_file(TEMPLATE_PATH + "/TensorMethods.h")
 
@@ -140,6 +143,7 @@ context->registerType(Backend::${backend}, ScalarType::${scalar_type}, new ${typ
 core_file_manager = FileManager(core_install_dir)
 file_manager = FileManager()
 cuda_file_manager = FileManager()
+opencl_file_manager = FileManager()
 
 generators = {
     'CPUGenerator.h': {
@@ -152,9 +156,14 @@ generators = {
         'th_generator': '',
         'header': 'THC/THC.h'
     },
+    'OPENCLGenerator.h': {
+        'name': 'OPENCL',
+        'th_generator': '',
+        'header': 'TH/TH.h'
+    },
 }
 
-backends = ['CPU', 'CUDA']
+backends = ['CPU', 'CUDA', 'OPENCL']
 densities = ['Dense', 'Sparse']
 
 # scalar_name, c_type, accreal, th_scalar_type, is_floating_type
@@ -175,6 +184,8 @@ top_env = {
     'cpu_type_headers': [],
     'cuda_type_registrations': [],
     'cuda_type_headers': [],
+    'opencl_type_registrations': [],
+    'opencl_type_headers': [],
     'pure_virtual_type_method_declarations': [],
     'pure_virtual_extended_type_method_declarations': [],
     'type_method_declarations': [],
@@ -314,9 +325,13 @@ def generate_storage_type_and_tensor(backend, density, scalar_type, declarations
     fm.write(env['Type'] + ".h", TYPE_DERIVED_H, env)
 
     type_register = TYPE_REGISTER.substitute(backend=env['Backend'], scalar_type=scalar_name, type_name=env['Type'])
-    if env['DenseBackend'] == 'CPU':
+    if env['DenseBackend'] == 'CPU' :
         top_env['cpu_type_registrations'].append(type_register)
         top_env['cpu_type_headers'].append(
+            '#include "ATen/{}.h"'.format(env['Type']))
+    elif env['DenseBackend'] == 'OPENCL' :
+        top_env['opencl_type_registrations'].append(type_register)
+        top_env['opencl_type_headers'].append(
             '#include "ATen/{}.h"'.format(env['Type']))
     else:
         assert env['DenseBackend'] == 'CUDA'
@@ -351,6 +366,7 @@ def declare_outputs():
     for f in files:
         file_manager.will_write(f)
     cuda_files = ['CUDACopy.cpp', 'RegisterCUDA.cpp', 'RegisterCUDA.h']
+    opencl_files = ['OPENCLCopy.cpp', 'RegisterOPENCL.cpp', 'RegisterOPENCL.h']
     for f in cuda_files:
         cuda_file_manager.will_write(f)
     for fname in sorted(generators.keys()):
@@ -397,6 +413,8 @@ def generate_outputs():
         fm = file_manager
         if env['name'] == 'CUDA':
             fm = cuda_file_manager
+        if env['name'] == 'OPENCL':
+            fm = opencl_file_manager
         fm.write(fname, GENERATOR_DERIVED, env)
 
     # note: this will fill in top_env['type/tensor_method_declarations/definitions']
@@ -432,14 +450,19 @@ def generate_outputs():
     cuda_file_manager.write('RegisterCUDA.h', REGISTER_CUDA_H, top_env)
     cuda_file_manager.write('RegisterCUDA.cpp', REGISTER_CUDA_CPP, top_env)
 
+    cuda_file_manager.write('RegisterOPENCL.h', REGISTER_OPENCL_H, top_env)
+    cuda_file_manager.write('RegisterOPENCL.cpp', REGISTER_OPENCL_CPP, top_env)
+
     file_manager.write('Functions.h', FUNCTIONS_H, top_env)
 
     file_manager.write('CPUCopy.cpp', copy_wrapper.create(all_types, 'CPU'))
     cuda_file_manager.write('CUDACopy.cpp', copy_wrapper.create(all_types, 'CUDA'))
+    opencl_file_manager.write('OPENCLCopy.cpp', copy_wrapper.create(all_types, 'OPENCL'))
     file_manager.write('NativeFunctions.h', NATIVE_FUNCTIONS_H, top_env)
 
     file_manager.check_all_files_written()
     cuda_file_manager.check_all_files_written()
+    opencl_file_manager.check_all_files_written()
 
     # check that generated files match source files
     core_source_path = os.path.join(options.source_path, 'core')
@@ -461,5 +484,6 @@ if options.output_dependencies is not None:
     file_manager.write_outputs(options.output_dependencies)
     core_file_manager.write_outputs(options.output_dependencies + "-core")
     cuda_file_manager.write_outputs(options.output_dependencies + "-cuda")
+    opencl_file_manager.write_outputs(options.output_dependencies + "-opencl")
 else:
     generate_outputs()

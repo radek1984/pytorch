@@ -153,6 +153,7 @@ if (NOT BUILD_ATEN_MOBILE)
   endif()
   file(READ ${CMAKE_BINARY_DIR}/aten/src/ATen/generated_cpp.txt generated_cpp)
   file(READ ${CMAKE_BINARY_DIR}/aten/src/ATen/generated_cpp.txt-cuda cuda_generated_cpp)
+  file(READ ${CMAKE_BINARY_DIR}/aten/src/ATen/generated_cpp.txt-opencl opencl_generated_cpp)
 
   file(GLOB_RECURSE all_templates "${CMAKE_CURRENT_LIST_DIR}/../aten/src/ATen/templates/*")
 
@@ -171,13 +172,21 @@ if (NOT BUILD_ATEN_MOBILE)
       --install_dir ${CMAKE_BINARY_DIR}/aten/src/ATen
     DEPENDS ${all_python} ${all_templates} ${cwrap_files} ${core_gen_checked_inputs})
 
+  add_custom_command(OUTPUT ${generated_cpp} ${opencl_generated_cpp}
+    COMMAND ${GEN_COMMAND}
+      --install_dir ${CMAKE_BINARY_DIR}/aten/src/ATen
+    DEPENDS ${all_python} ${all_templates} ${cwrap_files} ${core_gen_checked_inputs})
+
   # Generated headers used from a CUDA (.cu) file are
   # not tracked correctly in CMake. We make the libATen.so depend explicitly
   # on building the generated ATen files to workaround.
   add_custom_target(ATEN_CPU_FILES_GEN_TARGET DEPENDS ${generated_cpp})
   add_custom_target(ATEN_CUDA_FILES_GEN_TARGET DEPENDS ${cuda_generated_cpp})
+  add_custom_target(ATEN_OPENCL_FILES_GEN_TARGET DEPENDS ${opencl_generated_cpp})
   add_library(ATEN_CPU_FILES_GEN_LIB INTERFACE)
   add_library(ATEN_CUDA_FILES_GEN_LIB INTERFACE)
+  add_library(ATEN_OPENCL_FILES_GEN_LIB INTERFACE)
   add_dependencies(ATEN_CPU_FILES_GEN_LIB ATEN_CPU_FILES_GEN_TARGET)
   add_dependencies(ATEN_CUDA_FILES_GEN_LIB ATEN_CUDA_FILES_GEN_TARGET)
+  add_dependencies(ATEN_OPENCL_FILES_GEN_LIB ATEN_OPENCL_FILES_GEN_TARGET)
 endif()
