@@ -158,7 +158,7 @@ generators = {
     },
     'OPENCLGenerator.h': {
         'name': 'OPENCL',
-        'th_generator': '',
+        'th_generator': 'THGenerator * generator;',
         'header': 'TH/TH.h'
     },
 }
@@ -369,10 +369,14 @@ def declare_outputs():
     opencl_files = ['OPENCLCopy.cpp', 'RegisterOPENCL.cpp', 'RegisterOPENCL.h']
     for f in cuda_files:
         cuda_file_manager.will_write(f)
+    for f in opencl_files:
+        opencl_file_manager.will_write(f)
     for fname in sorted(generators.keys()):
         fm = file_manager
         if generators[fname]['name'] == 'CUDA':
             fm = cuda_file_manager
+        if generators[fname]['name'] == 'OPENCL':
+            fm = opencl_file_manager
         fm.will_write(fname)
     for backend, density, scalar_types in iterate_types():
         scalar_name = scalar_types[0]
@@ -450,8 +454,8 @@ def generate_outputs():
     cuda_file_manager.write('RegisterCUDA.h', REGISTER_CUDA_H, top_env)
     cuda_file_manager.write('RegisterCUDA.cpp', REGISTER_CUDA_CPP, top_env)
 
-    cuda_file_manager.write('RegisterOPENCL.h', REGISTER_OPENCL_H, top_env)
-    cuda_file_manager.write('RegisterOPENCL.cpp', REGISTER_OPENCL_CPP, top_env)
+    opencl_file_manager.write('RegisterOPENCL.h', REGISTER_OPENCL_H, top_env)
+    opencl_file_manager.write('RegisterOPENCL.cpp', REGISTER_OPENCL_CPP, top_env)
 
     file_manager.write('Functions.h', FUNCTIONS_H, top_env)
 
