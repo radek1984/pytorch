@@ -287,6 +287,20 @@ def generate_storage_type_and_tensor(backend, density, scalar_type, declarations
         env['isCUDA'] = 'true'
         env['storage_device'] = 'return storage->device;'
         env['Generator'] = 'CUDAGenerator'
+    elif backend == 'OPENCL':
+        env['extra_opencl_headers'] = ['#include <ATen/opencl/ATenOPENCLGeneral.h>']
+        env['extra_opencl_headers'].append('#include <ATen/DeviceGuard.h>')
+        env['extra_opencl_headers'].append('#include <ATen/opencl/OPENCLDevice.h>')
+        env['extra_opencl_headers'].append('#include <ATen/opencl/OPENCLTypeDefault.h>')
+        #sname = '' if scalar_name == "Float" else scalar_name
+        #env['THType'] = 'Cuda{}'.format(sname)
+        #env['THStorage'] = 'THCuda{}Storage'.format(sname)
+        #env['THTensor'] = 'THCuda{}Tensor'.format(sname)
+        #env['THIndexTensor'] = 'THCudaLongTensor'
+        #env['state'] = ['globalContext().getTHCState()']
+        env['isOPENCL'] = 'true'
+        env['storage_device'] = 'return storage->device;'
+        env['Generator'] = 'OPENCLGenerator'
     else:
         env['th_headers'] = [
             '#include <TH/TH.h>',
@@ -367,6 +381,8 @@ def declare_outputs():
         file_manager.will_write(f)
     cuda_files = ['CUDACopy.cpp', 'RegisterCUDA.cpp', 'RegisterCUDA.h']
     opencl_files = ['OPENCLCopy.cpp', 'RegisterOPENCL.cpp', 'RegisterOPENCL.h']
+    for f in opencl_files:
+        opencl_file_manager.will_write(f)
     for f in cuda_files:
         cuda_file_manager.will_write(f)
     for f in opencl_files:
@@ -467,6 +483,7 @@ def generate_outputs():
     file_manager.check_all_files_written()
     cuda_file_manager.check_all_files_written()
     opencl_file_manager.check_all_files_written()
+
 
     # check that generated files match source files
     core_source_path = os.path.join(options.source_path, 'core')
