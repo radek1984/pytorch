@@ -39,7 +39,7 @@
 
 namespace caffe2 {
 
-CAFFE2_OPENCL_API struct ThreadLocalOpenCLObjects {
+struct CAFFE2_OPENCL_API ThreadLocalOpenCLObjects {
  private:
   ThreadLocalOpenCLObjects();
   ThreadLocalOpenCLObjects(const ThreadLocalOpenCLObjects &) = delete;
@@ -58,7 +58,7 @@ CAFFE2_OPENCL_API struct ThreadLocalOpenCLObjects {
   friend class OpenCLContext;
 };
 
-CAFFE2_OPENCL_API class OpenCLContext final : public BaseContext {
+class CAFFE2_OPENCL_API OpenCLContext final : public BaseContext {
  public:
   //TODO: Move members to private section used friends for access
   static cl::Context context;
@@ -120,6 +120,9 @@ CAFFE2_OPENCL_API class OpenCLContext final : public BaseContext {
 
   void LogProfilingInfo(const cl::Event& ev, const std::string& str);
   
+  static constexpr DeviceType GetDeviceType() {
+    return OPENCL;
+  }
   
   enum ECOPY_DIR{CPU_CPU, CPU_CL, CL_CPU, CL_CL, UNDEFINED_COPY};
   void EnumCopy(ECOPY_DIR ed, size_t nbytes, const void* src, void* dst);
