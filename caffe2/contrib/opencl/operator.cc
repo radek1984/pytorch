@@ -1,3 +1,4 @@
+/*
 #include "operator.h"
 
 //#include "caffe2/core/common.h"
@@ -16,3 +17,4 @@ CAFFE_DEFINE_REGISTRY(
 CAFFE_REGISTER_DEVICE_TYPE(DeviceType::OPENCL, OpenCLOperatorRegistry);
 
 } // namespace caffe2
+*/

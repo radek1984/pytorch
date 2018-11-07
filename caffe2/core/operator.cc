@@ -330,7 +330,14 @@ C10_DEFINE_REGISTRY(
     const OperatorDef&,
     Workspace*);
 CAFFE_REGISTER_DEVICE_TYPE(CUDA, CUDAOperatorRegistry);
-
+///////////
+C10_DEFINE_REGISTRY(
+    OpenCLOperatorRegistry,
+    OperatorBase,
+    const OperatorDef&,
+    Workspace*);
+CAFFE_REGISTER_DEVICE_TYPE(OPENCL, OpenCLOperatorRegistry);
+////////////
 C10_DEFINE_REGISTRY(
     HIPOperatorRegistry,
     OperatorBase,

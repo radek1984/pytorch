@@ -11,12 +11,12 @@
 
 namespace caffe2 {
 
-CAFFE_KNOWN_TYPE(Tensor<OpenCLContext>);
+//CAFFE_KNOWN_TYPE(Tensor<OpenCLContext>);
 
 thread_local ThreadLocalOpenCLObjects OpenCLContext::openCL_objects_;
 cl::Context OpenCLContext::context;
 cl::Platform OpenCLContext::platform;
-cl::Device OpenCLContext::device;
+cl::Device OpenCLContext::computing_device;
 std::vector<cl::Device> OpenCLContext::devices;
 
 bool OpenCLContext::initialized = false;
@@ -49,7 +49,7 @@ cl::CommandQueue& ThreadLocalOpenCLObjects::GetQueue(int queue_id)
     queues.resize(queue_id + 1);
   }
   if (queues[queue_id]() == nullptr) {
-    queues[queue_id] = cl::CommandQueue(OpenCLContext::context, OpenCLContext::device, profiling_info_enabled_ ? CL_QUEUE_PROFILING_ENABLE : 0);
+    queues[queue_id] = cl::CommandQueue(OpenCLContext::context, OpenCLContext::computing_device, profiling_info_enabled_ ? CL_QUEUE_PROFILING_ENABLE : 0);
   }
   return queues[queue_id];
 }
@@ -95,7 +95,11 @@ void OpenCLContext::enqueueCopyBytes<CPUContext, OpenCLContext>(size_t nbytes, c
   queue().enqueueWriteBuffer(*((cl::Buffer*)(dst)), CL_FALSE, 0, nbytes, static_cast<const char*>(src));
 }
 
+enum ECOPY_DIR{CPU_CPU, CPU_CL, CL_CPU, CL_CL, UNDEFINED_COPY};
+void EnumCopy(ECOPY_DIR ed, size_t nbytes, const void* src, void* dst);
 
+
+/*
 template <>
 void OpenCLContext::CopyBytes<CPUContext, OpenCLContext>(size_t nbytes, const void *src, void *dst) {
   queue().enqueueWriteBuffer(*((cl::Buffer*)(dst)), CL_FALSE, 0, nbytes, static_cast<const char*>(src));
@@ -112,6 +116,30 @@ void OpenCLContext::CopyBytes<CPUContext, CPUContext>(size_t nbytes, const void 
   memcpy(dst, src, nbytes);
 }
 
+template <>
+inline void CopyItems<OpenCLContext, CPUContext>(const TypeMeta& meta, size_t n, const void* src, void* dst) {
+    CAFFE_ENFORCE(!meta.copy(), "OpenCLContext requires fundamental types.");
+    CopyBytes<OpenCLContext, CPUContext>(n * meta.itemsize(), src, dst);
+}
+
+template <>
+inline void CopyItems<CPUContext, OpenCLContext>(const TypeMeta& meta, size_t n, const void* src, void* dst) {
+    CAFFE_ENFORCE(!meta.copy(), "OpenCLContext requires fundamental types.");
+    CopyBytes<CPUContext, OpenCLContext>(n * meta.itemsize(), src, dst);
+}
+
+template <>
+inline void CopyItems<CPUContext, CPUContext>(const TypeMeta& meta, size_t n, const void* src, void* dst) {
+    CAFFE_ENFORCE(!meta.copy(), "OpenCLContext requires fundamental types.");
+    CopyBytes<CPUContext, CPUContext>(n * meta.itemsize(), src, dst);
+}
+
+template <>
+inline void CopyItems<OpenCLContext, OpenCLContext>(const TypeMeta& meta, size_t n, const void* src, void* dst) {
+    CAFFE_ENFORCE(!meta.copy(), "OpenCLContext requires fundamental types.");
+    CopyBytes<OpenCLContext, OpenCLContext>(n * meta.itemsize(), src, dst);
+}
+*/
 void OpenCLContext::LogProfilingInfo(const cl::Event& ev, const std::string& str)
 {
   openCL_objects_.LogProfilingInfo(ev, str);
@@ -134,11 +162,11 @@ cl::Kernel OpenCLContext::BuildKernel(const char* src, std::string additional_op
 
   // TODO support more than one device
   // this will involve checking a compiler exists on each device
-  vector<cl::Device> devices{OpenCLContext::device};
+  vector<cl::Device> devices{OpenCLContext::computing_device};
   err = p.build(devices, options.c_str());
-  cl_build_status build_status = p.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(OpenCLContext::device);
+  cl_build_status build_status = p.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(OpenCLContext::computing_device);
   if (err != CL_SUCCESS || build_status != CL_BUILD_SUCCESS) {
-    auto str = p.getBuildInfo<CL_PROGRAM_BUILD_LOG>(OpenCLContext::device);
+    auto str = p.getBuildInfo<CL_PROGRAM_BUILD_LOG>(OpenCLContext::computing_device);
     LOG(ERROR) << "Error code: " << err << " Build status: " << build_status;
     CAFFE_THROW(str);
   }

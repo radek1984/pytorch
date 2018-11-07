@@ -119,17 +119,27 @@ CAFFE2_OPENCL_API class OpenCLContext final : public BaseContext {
   static void Delete(void* data);
 
   void LogProfilingInfo(const cl::Event& ev, const std::string& str);
+  
+  
+  enum ECOPY_DIR{CPU_CPU, CPU_CL, CL_CPU, CL_CL, UNDEFINED_COPY};
+  void EnumCopy(ECOPY_DIR ed, size_t nbytes, const void* src, void* dst);
+
+  template <class SrcContext, class DstContext>
+  void CopyBytes(size_t nbytes, const void *src, void *dst);
 
   void CopyBytesSameDevice(size_t nbytes, const void* src, void* dst) override {
-    CopyBytes<OpenCLContext, OpenCLContext>(nbytes, src, dst);
+    EnumCopy(CL_CL, nbytes, src, dst);
+    //CopyBytes<OpenCLContext, OpenCLContext>();
   }
 
   void CopyBytesToCPU(size_t nbytes, const void* src, void* dst) override {
-    CopyBytes<OpenCLContext, CPUContext>(nbytes, src, dst);
+    EnumCopy(CL_CPU, nbytes, src, dst);
+    //CopyBytes<OpenCLContext, CPUContext>(nbytes, src, dst);
   }
 
   void CopyBytesFromCPU(size_t nbytes, const void* src, void* dst) override {
-    CopyBytes<CPUContext, OpenCLContext>(nbytes, src, dst);
+    EnumCopy(CPU_CL, nbytes, src, dst);
+    //CopyBytes<CPUContext, OpenCLContext>(nbytes, src, dst);
   }
 
   template <typename T, class SrcContext, class DstContext>
@@ -162,28 +172,26 @@ CAFFE2_OPENCL_API class OpenCLContext final : public BaseContext {
 
   template <class SrcContext, class DstContext>
   inline void
-  CopyItems(const TypeMeta& meta, size_t n, const void* src, void* dst) {
-    CAFFE_ENFORCE(!meta.copy(), "OpenCLContext requires fundamental types.");
-    CopyBytes<SrcContext, DstContext>(n * meta.itemsize(), src, dst);
-  }
+  CopyItems(const TypeMeta& meta, size_t n, const void* src, void* dst);
 
   void SwitchToDevice(int queue_id) override {
     queue_id_ = queue_id;
   }
 
+  using BaseContext::SwitchToDevice;
+
   inline void WaitEvent(const Event& ev) override {
-    ev.Wait(at::OpenCLFloat, this);
+    ev.Wait(OPENCL, this);
   }
 
   inline void Record(Event* ev, const char* err_msg = nullptr) const override {
     CAFFE_ENFORCE(ev, "Event must not be null.");
-    ev->Record(PROTO_OPENCL, this, err_msg);
+    ev->Record(OPENCL, this, err_msg);
   }
 
   void FinishDeviceComputation() override {
     queue().finish();
     openCL_objects_.PrintProfilingLogs();
-    return true;
   }
 
   cl::CommandQueue& queue() const { //TODO: change name to queue
@@ -207,9 +215,6 @@ CAFFE2_OPENCL_API class OpenCLContext final : public BaseContext {
 
   cl::Kernel BuildKernelCachedId(const std::string &cacheId, const char *src, std::string compile_options = "", const char *function_name = "K");
   cl::Kernel BuildKernelCached(const char *src, std::string compile_options = "", const char *function_name = "K");
-
-  template <class SrcContext, class DstContext>
-  void CopyBytes(size_t nbytes, const void *src, void *dst);
 
   template <class SrcContext, class DstContext>
   void enqueueCopyBytes(size_t nbytes, const void *src, void *dst);
@@ -274,7 +279,7 @@ protected:
   static thread_local ThreadLocalOpenCLObjects openCL_objects_;
 };
 
-typedef Tensor<OpenCLContext> TensorCL;
+//typedef Tensor<OpenCLContext> TensorCL;
 
 } // namespace caffe2
 

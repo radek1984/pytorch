@@ -1,8 +1,10 @@
+/*
 #ifndef CAFFE2_CONTRIB_OPENCL_OPERATOR_H_
 #define CAFFE2_CONTRIB_OPENCL_OPERATOR_H_
 
+
 #include "caffe2/core/common.h"
-#include "caffe2/core/registry.h"
+//#include "caffe2/core/registry.h"
 #include "caffe2/core/workspace.h"
 
 namespace caffe2 {
@@ -22,6 +24,8 @@ C10_DEFINE_REGISTRY(
 #define REGISTER_OPENCL_OPERATOR_WITH_ENGINE(name, engine, ...) \
   CAFFE_REGISTER_CLASS(OpenCLOperatorRegistry, name##_ENGINE_##engine, __VA_ARGS__)
 
+
 } // namespace caffe2
 
 #endif // CAFFE2_CONTRIB_OPENCL_OPERATOR_H_
+*/
