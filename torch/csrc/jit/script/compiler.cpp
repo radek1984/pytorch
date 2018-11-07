@@ -1381,13 +1381,13 @@ private:
   Symbol getAugOp(const AugAssign& stmt, bool isTensor) {
       switch (stmt.aug_op()) {
         case '+':
-          return isTensor ? aten::add_ : aten::_aug_item_add;
+          return isTensor ? aten::add_ : aten::add;
         case '-':
-          return isTensor ? aten::sub_ : aten::_aug_item_sub;
+          return isTensor ? aten::sub_ : aten::sub;
         case '/':
-          return isTensor ? aten::div_ : aten::_aug_item_div;
+          return isTensor ? aten::div_ : aten::div;
         case '*':
-          return isTensor ? aten::mul_ : aten::_aug_item_mul;
+          return isTensor ? aten::mul_ : aten::mul;
         default:
           throw ErrorReport(stmt) << "Unknown augmented assignment: "
                                   << kindToString(stmt.aug_op());
@@ -1441,16 +1441,37 @@ private:
       }
       const auto idxValue = emitExpr(subscriptExprs[0]);
 
-      std::vector<NamedValue> args;
-      args.emplace_back(listExpr.range(), "list", listValue);
-      args.emplace_back(subscriptExprs.range(), "idx", idxValue);
-      args.emplace_back(stmt.rhs().range(), "value", emitExpr(stmt.rhs()));
-      emitBuiltinCall(
+      const auto listArg = NamedValue(listExpr.range(), "list", listValue);
+      const auto idxArg = NamedValue(subscriptExprs.range(), "idx", idxValue);
+      const auto valueArg =
+          NamedValue(stmt.rhs().range(), "value", emitExpr(stmt.rhs()));
+
+      // Lower this into list.setitem(getitem(idx).add(value)), similar to how
+      // Python handles this case.
+      const auto getItem = emitBuiltinCall(
+          stmt.range(),
+          *method.graph(),
+          aten::select,
+          c10::nullopt,
+          {listArg, idxArg},
+          {},
+          /*required=*/true);
+
+      const auto augmentedItem = emitBuiltinCall(
           stmt.range(),
           *method.graph(),
           getAugOp(stmt, /*isTensor=*/false),
+          {},
+          {getItem, valueArg},
+          {},
+          /*required=*/true);
+
+      emitBuiltinCall(
+          stmt.range(),
+          *method.graph(),
+          aten::_set_item,
           c10::nullopt,
-          args,
+          {listArg, idxArg, augmentedItem},
           {},
           /*required=*/true);
     } else {
@@ -1487,7 +1508,7 @@ private:
       emitBuiltinCall(
           stmtRange,
           *method.graph(),
-          aten::_assign,
+          aten::copy_,
           c10::nullopt,
           args,
           {},

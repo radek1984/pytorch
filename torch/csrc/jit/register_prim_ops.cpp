@@ -818,53 +818,24 @@ Operator(                                                                      \
     Operator("aten::eq(float[] a, float[] b) -> int", listEq<Shared<DoubleList>>),
     Operator("aten::eq(Tensor[] a, Tensor[] b) -> int", listEq<Shared<TensorList>>),
 
-#define CREATE_ASSIGN_OP(other_type, c_type)                              \
-  Operator(                                                               \
-      "aten::_assign(Tensor(a!) t, " #other_type " other) -> Tensor(a!)", \
-      [](const Node* node) {                                              \
-        return [=](Stack& stack) {                                        \
-          at::Tensor t;                                                   \
-          c_type other;                                                   \
-          pop(stack, t, other);                                           \
-          std::move(t) = other;                                           \
-          push(stack, std::move(t));                                      \
-          return 0;                                                       \
-        };                                                                \
+#define CREATE_COPY_OP(other_type, c_type)                              \
+  Operator(                                                             \
+      "aten::copy_(Tensor(a!) t, " #other_type " other) -> Tensor(a!)", \
+      [](const Node* node) {                                            \
+        return [=](Stack& stack) {                                      \
+          at::Tensor t;                                                 \
+          c_type other;                                                 \
+          pop(stack, t, other);                                         \
+          std::move(t) = other;                                         \
+          push(stack, std::move(t));                                    \
+          return 0;                                                     \
+        };                                                              \
       }),
 
-    CREATE_ASSIGN_OP(Tensor, at::Tensor)
-    CREATE_ASSIGN_OP(int, int64_t)
-    CREATE_ASSIGN_OP(float, double)
-#undef CREATE_ASSIGN_OP
-
-// Create ops to do augmented assignments to primitive list types, e.g.:
-//   foo[a] += 1 where foo :: int[]
-#define CREATE_AUG_SETITEM_OP(c_type, decl_type, aug_name, aug_op)            \
-  Operator(                                                                \
-      "aten::_aug_item_" aug_name "(" decl_type                            \
-      "[](a!) list, int idx, " decl_type " value) -> " decl_type "[](a!)", \
-      [](const Node* node) {                                               \
-        return [](Stack& stack) {                                          \
-          Shared<c_type> list;                                             \
-          int64_t idx;                                                     \
-          c_type::ElemType value;                                          \
-          pop(stack, list, idx, value);                                    \
-          getItem(list, idx) aug_op value;                                 \
-          push(stack, list);                                               \
-          return 0;                                                        \
-        };                                                                 \
-      }),
-#define CREATE_AUG_SETITEM_OPS(c_type, decl_type)     \
-  CREATE_AUG_SETITEM_OP(c_type, decl_type, "add", +=) \
-  CREATE_AUG_SETITEM_OP(c_type, decl_type, "sub", -=) \
-  CREATE_AUG_SETITEM_OP(c_type, decl_type, "div", /=) \
-  CREATE_AUG_SETITEM_OP(c_type, decl_type, "mul", *=)
-
-    CREATE_AUG_SETITEM_OPS(IntList, "int")
-    CREATE_AUG_SETITEM_OPS(DoubleList, "float")
-
-#undef CREATE_AUG_SETITEM_OPS
-#undef CREATE_AUG_SETITEM_OP
+    CREATE_COPY_OP(Tensor, at::Tensor)
+    CREATE_COPY_OP(int, int64_t)
+    CREATE_COPY_OP(float, double)
+#undef CREATE_COPY_OP
 
     DEFINE_BINARY_OP(aten::add, a + b)
     DEFINE_BINARY_OP(aten::sub, a - b)
