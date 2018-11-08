@@ -114,6 +114,8 @@ class CAFFE2_OPENCL_API OpenCLContext final : public BaseContext {
   /*
    * Everything below is basically boiler plate for Context classes
    */
+
+  //TODO: get rid of these two, cause we have allocator now:
   static std::pair<void*, MemoryDeleter> New(size_t nbytes);
 
   static void Delete(void* data);
@@ -137,7 +139,7 @@ class CAFFE2_OPENCL_API OpenCLContext final : public BaseContext {
   }
 
   void CopyBytesToCPU(size_t nbytes, const void* src, void* dst) override {
-    queue().enqueueReadBuffer(*((cl::Buffer*)src), CL_FALSE, 0, nbytes, static_cast<char*>(dst));
+    queue().enqueueReadBuffer(*((cl::Buffer*)src), CL_TRUE, 0, nbytes, static_cast<char*>(dst));
   }
 
   void CopyBytesFromCPU(size_t nbytes, const void* src, void* dst) override {
@@ -161,15 +163,6 @@ class CAFFE2_OPENCL_API OpenCLContext final : public BaseContext {
     // return OPENCL;
     // TODO: Implement.
     assert(false && "NOT IMPLEMENTED");
-  }
-
-  inline void CopyCL(const cl::Buffer* src, cl::Buffer* dst, size_t size_bytes) {
-    cl::Event event;
-    OPENCL_CHECK(
-        queue().enqueueCopyBuffer(*src, *dst, 0, 0, size_bytes,
-        NULL,
-        &event)
-    );
   }
 
   template <class SrcContext, class DstContext>

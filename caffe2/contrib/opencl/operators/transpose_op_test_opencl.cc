@@ -853,13 +853,15 @@ void compare_tensors_by_name(const std::string &t_expected, const std::string &t
   auto cl_expected_out_buffer = reinterpret_cast<const cl::Buffer*>(cl_expected_tensor.data<float>());
   std::vector<float> expected_data_cl(cl_expected_tensor.size());
 
-  context.CopyBytes<OpenCLContext, CPUContext>(cl_expected_tensor.size() * sizeof(float), cl_expected_out_buffer, &expected_data_cl[0]);
+  //context.CopyBytes<OpenCLContext, CPUContext>(cl_expected_tensor.size() * sizeof(float), cl_expected_out_buffer, &expected_data_cl[0]);
+  context.CopyBytesToCPU(cl_expected_tensor.size() * sizeof(float), cl_expected_out_buffer, &expected_data_cl[0]);
 
   auto cl_output_tensor = ws_opencl.GetBlob(t_result)->Get<TensorCL>();
   auto cl_out_buffer = reinterpret_cast<const cl::Buffer*>(cl_output_tensor.data<float>());
   std::vector<float> data_cl(cl_output_tensor.size());
 
-  context.CopyBytes<OpenCLContext, CPUContext>(cl_output_tensor.size() * sizeof(float), cl_out_buffer, &data_cl[0]);
+  //context.CopyBytes<OpenCLContext, CPUContext>(cl_output_tensor.size() * sizeof(float), cl_out_buffer, &data_cl[0]);
+  context.CopyBytesToCPU(cl_output_tensor.size() * sizeof(float), cl_out_buffer, &data_cl[0]);
 
   EXPECT_EQ(cl_expected_tensor.size(), cl_output_tensor.size());
 
