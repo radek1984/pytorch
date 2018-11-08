@@ -86,21 +86,6 @@ void OpenCLContext::CopyBytes<OpenCLContext, CPUContext>(size_t nbytes, const vo
 }
 
 template <>
-void OpenCLContext::enqueueCopyBytes<OpenCLContext, CPUContext>(size_t nbytes, const void *src, void *dst) {
-  queue().enqueueReadBuffer(*((cl::Buffer*)src), CL_FALSE, 0, nbytes, static_cast<char*>(dst));
-}
-
-template <>
-void OpenCLContext::enqueueCopyBytes<CPUContext, OpenCLContext>(size_t nbytes, const void *src, void *dst) {
-  queue().enqueueWriteBuffer(*((cl::Buffer*)(dst)), CL_FALSE, 0, nbytes, static_cast<const char*>(src));
-}
-
-enum ECOPY_DIR{CPU_CPU, CPU_CL, CL_CPU, CL_CL, UNDEFINED_COPY};
-void EnumCopy(ECOPY_DIR ed, size_t nbytes, const void* src, void* dst);
-
-
-/*
-template <>
 void OpenCLContext::CopyBytes<CPUContext, OpenCLContext>(size_t nbytes, const void *src, void *dst) {
   queue().enqueueWriteBuffer(*((cl::Buffer*)(dst)), CL_FALSE, 0, nbytes, static_cast<const char*>(src));
 }
@@ -111,10 +96,23 @@ void OpenCLContext::CopyBytes<OpenCLContext, OpenCLContext>(size_t nbytes, const
   CopyBytes<OpenCLContext, CPUContext>(nbytes, src, (void*)&tmp[0]);
   CopyBytes<CPUContext, OpenCLContext>(nbytes, (void*)&tmp[0], dst);
 }
+
 template <>
 void OpenCLContext::CopyBytes<CPUContext, CPUContext>(size_t nbytes, const void *src, void *dst) {
   memcpy(dst, src, nbytes);
 }
+
+template <>
+void OpenCLContext::enqueueCopyBytes<OpenCLContext, CPUContext>(size_t nbytes, const void *src, void *dst) {
+  queue().enqueueReadBuffer(*((cl::Buffer*)src), CL_FALSE, 0, nbytes, static_cast<char*>(dst));
+}
+
+template <>
+void OpenCLContext::enqueueCopyBytes<CPUContext, OpenCLContext>(size_t nbytes, const void *src, void *dst) {
+  queue().enqueueWriteBuffer(*((cl::Buffer*)(dst)), CL_FALSE, 0, nbytes, static_cast<const char*>(src));
+}
+
+/*
 
 template <>
 inline void CopyItems<OpenCLContext, CPUContext>(const TypeMeta& meta, size_t n, const void* src, void* dst) {

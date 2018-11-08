@@ -123,26 +123,25 @@ class CAFFE2_OPENCL_API OpenCLContext final : public BaseContext {
   static constexpr DeviceType GetDeviceType() {
     return OPENCL;
   }
-  
-  enum ECOPY_DIR{CPU_CPU, CPU_CL, CL_CPU, CL_CL, UNDEFINED_COPY};
-  void EnumCopy(ECOPY_DIR ed, size_t nbytes, const void* src, void* dst);
 
   template <class SrcContext, class DstContext>
   void CopyBytes(size_t nbytes, const void *src, void *dst);
 
   void CopyBytesSameDevice(size_t nbytes, const void* src, void* dst) override {
-    EnumCopy(CL_CL, nbytes, src, dst);
-    //CopyBytes<OpenCLContext, OpenCLContext>();
+    cl::Event event;
+    OPENCL_CHECK(
+        queue().enqueueCopyBuffer(*((const cl::Buffer*)src), *((const cl::Buffer*)dst), 0, 0, nbytes,
+        NULL,
+        &event)
+    );
   }
 
   void CopyBytesToCPU(size_t nbytes, const void* src, void* dst) override {
-    EnumCopy(CL_CPU, nbytes, src, dst);
-    //CopyBytes<OpenCLContext, CPUContext>(nbytes, src, dst);
+    queue().enqueueReadBuffer(*((cl::Buffer*)src), CL_FALSE, 0, nbytes, static_cast<char*>(dst));
   }
 
   void CopyBytesFromCPU(size_t nbytes, const void* src, void* dst) override {
-    EnumCopy(CPU_CL, nbytes, src, dst);
-    //CopyBytes<CPUContext, OpenCLContext>(nbytes, src, dst);
+    queue().enqueueWriteBuffer(*((cl::Buffer*)(dst)), CL_FALSE, 0, nbytes, static_cast<const char*>(src));
   }
 
   template <typename T, class SrcContext, class DstContext>
@@ -283,6 +282,7 @@ protected:
 };
 
 //typedef Tensor<OpenCLContext> TensorCL;
+using TensorCL = Tensor;
 
 } // namespace caffe2
 
