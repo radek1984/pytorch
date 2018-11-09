@@ -143,7 +143,7 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Cos, cos)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sin, sin)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqrt, sqrt)
-DELEGATE_SIMPLE_UNARY_FUNCTION(float, InvSqrt, rsqrt)
+DELEGATE_SIMPLE_UNARY_FUNCTION(float, Rsqrt, rsqrt)
 DELEGATE_SIMPLE_UNARY_FUNCTION(bool, Not, Not)
 
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
@@ -304,7 +304,7 @@ DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Cos)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sin)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqrt)
-//DELEGATE_SIMPLE_UNARY_FUNCTION(float, InvSqrt)
+DELEGATE_SIMPLE_UNARY_FUNCTION(float, Rsqrt)
 DELEGATE_SIMPLE_UNARY_FUNCTION(bool, Not)
 
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
@@ -1025,8 +1025,10 @@ kernel void kMathTranspose4D(
 )CLC";
 
 
+
+
 template <>
-void Transpose<cl::Buffer, OpenCLContext>(
+CAFFE2_API void Transpose<cl::Buffer, OpenCLContext>(
     const int ndim,
     const int* x_dims,
     const int* axes,
